@@ -3,7 +3,7 @@ HTS-AT: A HIERARCHICAL TOKEN-SEMANTIC AUDIO TRANSFORMER FOR SOUND CLASSIFICATION
 
 All scripts is run by main.py:
 ```
-Train: CUDA_VISIBLE_DEVICES=1,2,3,4 python main.py train
+Train: python main.py train
 
-Test: CUDA_VISIBLE_DEVICES=1,2,3,4 python main.py test
+Test: python main.py test
 ```

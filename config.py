@@ -1,14 +1,17 @@
-exp_name = "valLoss_pretrained_ablation_ckpt6_noCarDoor" 
+exp_name = "trial_pl" 
 workspace = "/home/jykim/work/HTS-AT" # the folder of your code
-dataset_path = "/home/jykim/work/HTS-AT-KS/aihub_dataset/ablation/noCarDoor" # the dataset path
+dataset_path = "/home/jykim/work/HTS-AT/aihub_dataset/v2_MotorAndCar" # the dataset path
 
-loss_type = "clip_bce"
+loss_type = "clip_bce" # "clip_bce" or "clip_ce" 
 
-swin_pretrain_path = "/home/jykim/work/HTS-AT/pretrained_weight/HTSAT_AudioSet_Saved_6.ckpt" # pretrained weight path
-resume_checkpoint = None # resume from checkpoint
+# swin_pretrain_path = None # pretrained weight path?
+resume_checkpoint = "/home/jykim/work/HTS-AT/pretrained_weight/HTSAT_AudioSet_Saved_6.ckpt" # resume from checkpoint
+test_checkpoint = None
+
+device = [0]
 
 random_seed = 970131 # 19970318 970131 12412 127777 1009 34047
-batch_size = 32 * 4 # batch size per GPU x GPU number , default is 32 x 4 = 128
+batch_size = 64 # batch size per GPU x GPU number , default is 32 x 4 = 128
 max_epoch = 100
 num_workers = 3
 
@@ -41,3 +44,7 @@ htsat_stride = (4, 4)
 htsat_num_head = [4,8,16,32]
 htsat_dim = 96 
 htsat_depth = [2,2,6,2]
+
+htsat_attn_heatmap = False
+enable_repeat_mode = False
+debug = False
