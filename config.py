@@ -1,17 +1,19 @@
-exp_name = "trial_pl" 
+exp_name = "MotorAndCar_noisy" 
 workspace = "/home/jykim/work/HTS-AT" # the folder of your code
 dataset_path = "/home/jykim/work/HTS-AT/aihub_dataset/v2_MotorAndCar" # the dataset path
 
 loss_type = "clip_bce" # "clip_bce" or "clip_ce" 
 
-# swin_pretrain_path = None # pretrained weight path?
 resume_checkpoint = "/home/jykim/work/HTS-AT/pretrained_weight/HTSAT_AudioSet_Saved_6.ckpt" # resume from checkpoint
-test_checkpoint = None
+
+test_checkpoint = "/home/jykim/work/HTS-AT/results/trial_pl/checkpoint/lightning_logs/version_0/checkpoints/l-epoch=93-val_loss=0.00285-val_acc=0.997.ckpt"
+test_result_dir = "/home/jykim/work/HTS-AT/csvs & confusion matrix"
+confusion_labels = ['Vehicle', 'Footsteps', 'Other']
 
 device = [0]
 
 random_seed = 970131 # 19970318 970131 12412 127777 1009 34047
-batch_size = 64 # batch size per GPU x GPU number , default is 32 x 4 = 128
+batch_size = 128 # batch size per GPU x GPU number , default is 32 x 4 = 128
 max_epoch = 100
 num_workers = 3
 

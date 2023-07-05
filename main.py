@@ -75,7 +75,7 @@ def train():
     # )
     checkpoint_callback = ModelCheckpoint(
     monitor = "val_loss",
-    filename='l-{epoch:d}-{val_loss:.5f}-{acc:.3f}',
+    filename='l-{epoch:d}-{val_loss:.5f}-{val_acc:.3f}',
     save_top_k = 10,
     mode = "min"
     )
@@ -170,7 +170,7 @@ def test():
     trainer = pl.Trainer(
         deterministic=False,
         devices = config.device, 
-        max_epochs = config.max_epoch,
+        # max_epochs = config.max_epoch,
         auto_lr_find = True,    
         sync_batchnorm = True,
         checkpoint_callback = False,
@@ -199,11 +199,13 @@ def test():
     )
     
     if config.test_checkpoint is not None:
-        ckpt = torch.load(config.resume_checkpoint, map_location="cpu")
+        ckpt = torch.load(config.test_checkpoint, map_location="cpu")
         ckpt["state_dict"].pop("sed_model.head.weight")
         ckpt["state_dict"].pop("sed_model.head.bias")
         model.load_state_dict(ckpt["state_dict"], strict=False)
         print(config.test_checkpoint + " loaded!")
+    else :
+        print("no test_checkpoint")
     trainer.test(model, test_dataloaders= test_dataloader)
 
 

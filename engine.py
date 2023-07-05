@@ -5,6 +5,7 @@
 import numpy as np
 import os
 import bisect
+from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 from sklearn.metrics import average_precision_score, roc_auc_score, accuracy_score, f1_score
 from utils import get_loss_func, get_mix_lambda, d_prime
 import torch
@@ -12,6 +13,10 @@ import torch.optim as optim
 import torch.distributed as dist
 import pytorch_lightning as pl
 
+import pandas as pd
+import seaborn as sns
+from sklearn.metrics import confusion_matrix
+import matplotlib.pyplot as plt
 
 class SEDWrapper(pl.LightningModule):
     def __init__(self, sed_model, config):
@@ -48,7 +53,7 @@ class SEDWrapper(pl.LightningModule):
 
         pred, _ = self(batch["waveform"], mix_lambda)
         loss = self.loss_func(pred, batch["target"])
-        self.log("train_loss", loss, on_epoch= True, prog_bar=True)
+        self.log("train_loss", loss, on_epoch= True, prog_bar=True, batch_size = self.config.batch_size)
 
         # Calculate and log training accuracy
         preds = torch.argmax(pred, dim=1)
@@ -72,18 +77,13 @@ class SEDWrapper(pl.LightningModule):
     
         # Calculate and log validation loss
         loss = self.loss_func(pred, batch["target"])
-        self.log("val_loss", loss, on_epoch=True, prog_bar=True)
+        self.log("val_loss", loss, on_epoch=True, prog_bar=True, batch_size = self.config.batch_size)
         return [pred.detach(), batch["target"].detach()]
     
     def validation_epoch_end(self, validation_step_outputs):
         self.device_type = next(self.parameters()).device
         pred = torch.cat([d[0] for d in validation_step_outputs], dim = 0)
         target = torch.cat([d[1] for d in validation_step_outputs], dim = 0)
-
-        # # ? 
-        # metric_dict = {
-        #     "val_acc":0.
-        # }
         
         gather_pred = pred.cpu().numpy()
         gather_target = target.cpu().numpy()
@@ -92,7 +92,7 @@ class SEDWrapper(pl.LightningModule):
         metric_dict = self.val_evaluate_metric(gather_pred, gather_target)
         print(self.device_type, metric_dict, flush = True)
     
-        self.log("val_acc", metric_dict["val_acc"], on_epoch = True, prog_bar=True, sync_dist=False)
+        self.log("val_acc", metric_dict["val_acc"], on_epoch = True, prog_bar=True, sync_dist=False, batch_size = self.config.batch_size)
             
         
     def time_shifting(self, x, shift_len):
@@ -100,44 +100,93 @@ class SEDWrapper(pl.LightningModule):
         new_sample = torch.cat([x[:, shift_len:], x[:, :shift_len]], axis = 1)
         return new_sample 
 
-    def test_step(self, batch, batch_idx):
-        self.device_type = next(self.parameters()).device
-        preds = []
-        # time shifting optimization
-        shift_num = 1 # framewise localization cannot allow the time shifting
-        for i in range(shift_num):
-            pred, pred_map = self(batch["waveform"])
-            preds.append(pred.unsqueeze(0))
-            batch["waveform"] = self.time_shifting(batch["waveform"], shift_len = 100 * (i + 1))
-        preds = torch.cat(preds, dim=0)
-        pred = preds.mean(dim = 0)
-
-        return [pred.detach(), batch["target"].detach()]
-
+    def test_step(self, batch, batch_idx) :
+        pred, _ = self(batch["waveform"])
+        return [pred.detach(), batch["target"].detach(), batch['audio_name']]
+    
     def test_epoch_end(self, test_step_outputs):
         self.device_type = next(self.parameters()).device
-
+        
         pred = torch.cat([d[0] for d in test_step_outputs], dim = 0)
         target = torch.cat([d[1] for d in test_step_outputs], dim = 0)
-        gather_pred = [torch.zeros_like(pred) for _ in range(dist.get_world_size())]
-        gather_target = [torch.zeros_like(target) for _ in range(dist.get_world_size())]
-        dist.barrier()
-
-        # metric_dict = {
-        #     "test_acc":0.
-        # }
+        audio_name = [name for sublist in [d[2] for d in test_step_outputs] for name in sublist]
         
-        dist.all_gather(gather_pred, pred)
-        dist.all_gather(gather_target, target)
-        if dist.get_rank() == 0:
-            gather_pred = torch.cat(gather_pred, dim = 0).cpu().numpy()
-            gather_target = torch.cat(gather_target, dim = 0).cpu().numpy()
-            gather_target = np.argmax(gather_target, 1)
-            metric_dict = self.test_evaluate_metric(gather_pred, gather_target)
-            print(self.device_type, dist.get_world_size(), metric_dict, flush = True)
+        gather_pred = pred.cpu().numpy()
+        gather_target = target.cpu().numpy()
+        gather_target = np.argmax(gather_target, 1)
+        
+        metric_dict = self.test_evaluate_metric(gather_pred, gather_target)
+        print(self.device_type, metric_dict, flush = True)
+        
+        # ================== save csv ====================
+        
+        df = pd.DataFrame()
+        df['file'] = audio_name
+        df['model_output'] = gather_pred.tolist()
+        df['model_prediction'] = np.argmax(gather_pred, 1).tolist()
+        df['label'] = gather_target.tolist()
+        
+        save_result_dir = os.path.join(self.config.test_result_dir, self.config.exp_name)
+        if not os.path.exists(save_result_dir):
+            os.makedirs(save_result_dir)
+        
+        save_csv = os.path.join(save_result_dir , f'acc_[{metric_dict["test_acc"]*100:.2f}].csv')
+        df.to_csv(save_csv , index = True)
 
-        self.log("test_acc", metric_dict["test_acc"] * float(dist.get_world_size()), on_epoch = True, prog_bar=True, sync_dist=True)
-        dist.barrier()
+        # ================== save confusion matrix ====================
+
+        cm = confusion_matrix(gather_target, np.argmax(gather_pred, 1))
+        labels = self.config.confusion_labels
+        plt.figure(figsize=(7, 7))
+        sns.heatmap(cm, annot=True, fmt='d', cbar=False, cmap = 'YlGnBu', xticklabels=labels, yticklabels=labels)
+        plt.title('Confusion Matrix')
+        plt.xlabel('Predicted')
+        plt.ylabel('Label')
+        
+        save_confusion = os.path.join(save_result_dir , f'confusion_matrix_[{metric_dict["test_acc"]*100:.2f}].png')
+        plt.savefig(save_confusion)
+        
+        # self.log("test_acc", metric_dict["test_acc"], on_epoch = True, prog_bar=True, sync_dist=False, batch_size = self.config.batch_size)
+        
+        
+    # def test_step(self, batch, batch_idx):
+    #     self.device_type = next(self.parameters()).device
+    #     preds = []
+    #     # time shifting optimization
+    #     shift_num = 1 # framewise localization cannot allow the time shifting
+    #     for i in range(shift_num):
+    #         pred, pred_map = self(batch["waveform"])
+    #         preds.append(pred.unsqueeze(0))
+    #         batch["waveform"] = self.time_shifting(batch["waveform"], shift_len = 100 * (i + 1))
+    #     preds = torch.cat(preds, dim=0)
+    #     pred = preds.mean(dim = 0)
+
+    #     return [pred.detach(), batch["target"].detach()]
+
+    # def test_epoch_end(self, test_step_outputs):
+    #     self.device_type = next(self.parameters()).device
+
+    #     pred = torch.cat([d[0] for d in test_step_outputs], dim = 0)
+    #     target = torch.cat([d[1] for d in test_step_outputs], dim = 0)
+    #     gather_pred = [torch.zeros_like(pred) for _ in range(dist.get_world_size())]
+    #     gather_target = [torch.zeros_like(target) for _ in range(dist.get_world_size())]
+    #     dist.barrier()
+
+    #     # metric_dict = {
+    #     #     "test_acc":0.
+    #     # }
+        
+    #     dist.all_gather(gather_pred, pred)
+    #     dist.all_gather(gather_target, target)
+    #     if dist.get_rank() == 0:
+    #         gather_pred = torch.cat(gather_pred, dim = 0).cpu().numpy()
+    #         gather_target = torch.cat(gather_target, dim = 0).cpu().numpy()
+    #         gather_target = np.argmax(gather_target, 1)
+    #         metric_dict = self.test_evaluate_metric(gather_pred, gather_target)
+    #         print(self.device_type, dist.get_world_size(), metric_dict, flush = True)
+
+    #     self.log("test_acc", metric_dict["test_acc"] * float(dist.get_world_size()), on_epoch = True, prog_bar=True, sync_dist=True)
+    #     dist.barrier()
     
 
     def configure_optimizers(self):
