@@ -1,4 +1,3 @@
-exp_name = "MotorAndCar_noisy" 
 workspace = "/home/jykim/work/HTS-AT" # the folder of your code
 dataset_path = "/home/jykim/work/HTS-AT/aihub_dataset/v2_MotorAndCar" # the dataset path
 
@@ -6,9 +5,13 @@ loss_type = "clip_bce" # "clip_bce" or "clip_ce"
 
 resume_checkpoint = "/home/jykim/work/HTS-AT/pretrained_weight/HTSAT_AudioSet_Saved_6.ckpt" # resume from checkpoint
 
-test_checkpoint = "/home/jykim/work/HTS-AT/results/trial_pl/checkpoint/lightning_logs/version_0/checkpoints/l-epoch=93-val_loss=0.00285-val_acc=0.997.ckpt"
+test_checkpoint = "/home/jykim/work/HTS-AT/results/MotorAndCar_noisy/checkpoint/lightning_logs/version_0/checkpoints/l-epoch=91-val_loss=0.00478-val_acc=0.999.ckpt"
 test_result_dir = "/home/jykim/work/HTS-AT/csvs & confusion matrix"
 confusion_labels = ['Vehicle', 'Footsteps', 'Other']
+
+exp_name = test_checkpoint.split('/')[-1][:-5] # << log folder name for train, test
+                 # train : name what you want
+                 # test : test_checkpoint.split('/')[-1][:-5]
 
 device = [0]
 

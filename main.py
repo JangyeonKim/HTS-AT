@@ -198,22 +198,20 @@ def test():
         config = config
     )
     
-    if config.test_checkpoint is not None:
-        ckpt = torch.load(config.test_checkpoint, map_location="cpu")
-        ckpt["state_dict"].pop("sed_model.head.weight")
-        ckpt["state_dict"].pop("sed_model.head.bias")
-        model.load_state_dict(ckpt["state_dict"], strict=False)
-        print(config.test_checkpoint + " loaded!")
-    else :
-        print("no test_checkpoint")
+    # if config.test_checkpoint is not None:
+    ckpt = torch.load(config.test_checkpoint, map_location="cpu")
+    ckpt["state_dict"].pop("sed_model.head.weight")
+    ckpt["state_dict"].pop("sed_model.head.bias")
+    model.load_state_dict(ckpt["state_dict"], strict=False)
+    print(config.test_checkpoint + " loaded!")
+    # else :
+    #     print("no test_checkpoint")
     trainer.test(model, test_dataloaders= test_dataloader)
 
 
 def main():
     parser = argparse.ArgumentParser(description="HTS-AT")
-    subparsers = parser.add_subparsers(dest = "mode")
-    parser_train = subparsers.add_parser("train")
-    parser_test = subparsers.add_parser("test")
+    parser.add_argument('--mode', type=str, default='train')  
     args = parser.parse_args()
     # default settings
     logging.basicConfig(level=logging.INFO) 
